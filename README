@@ -1,0 +1,15 @@
+Delay body filter module for nginx.
+
+This is a test module, to check request body filters buffering
+mechanism to be introduced.
+
+Example:
+
+    location / {
+        delay_body 1s;
+    }
+
+The module will delay the request body processing for the configured time.
+
+To compile nginx with the delay body module, use the "--add-module <path>"
+option of nginx configure.

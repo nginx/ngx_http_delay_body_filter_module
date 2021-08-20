@@ -9,10 +9,21 @@
 
 
 typedef struct {
-    ngx_msec_t  delay;
+    ngx_msec_t    delay;
 } ngx_http_delay_body_conf_t;
 
 
+typedef struct {
+    ngx_event_t   event;
+    ngx_chain_t  *out;
+    ngx_uint_t    buffered;
+} ngx_http_delay_body_ctx_t;
+
+
+static ngx_int_t ngx_http_delay_body_filter(ngx_http_request_t *r,
+    ngx_chain_t *in);
+static void ngx_http_delay_body_cleanup(void *data);
+static void ngx_http_delay_body_event_handler(ngx_event_t *ev);
 static void *ngx_http_delay_body_create_conf(ngx_conf_t *cf);
 static char *ngx_http_delay_body_merge_conf(ngx_conf_t *cf, void *parent,
     void *child);
@@ -69,7 +80,10 @@ static ngx_http_request_body_filter_pt   ngx_http_next_request_body_filter;
 static ngx_int_t
 ngx_http_delay_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
-    ngx_chain_t                 *cl;
+    ngx_int_t                    rc;
+    ngx_chain_t                 *cl, *ln;
+    ngx_http_cleanup_t          *cln;
+    ngx_http_delay_body_ctx_t   *ctx;
     ngx_http_delay_body_conf_t  *conf;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_delay_body_filter_module);
@@ -81,18 +95,100 @@ ngx_http_delay_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "delay request body filter");
 
-    /* TODO: delay */
+    ctx = ngx_http_get_module_ctx(r, ngx_http_delay_body_filter_module);
 
-    for (cl = in; cl; cl = cl->next) {
-
-        if (cl->buf->last_buf) {
-            ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                           "delay body: last buf");
+    if (ctx == NULL) {
+        ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_delay_body_ctx_t));
+        if (ctx == NULL) {
+            return NGX_ERROR;
         }
 
+        ngx_http_set_ctx(r, ctx, ngx_http_delay_body_filter_module);
+
+#if 1 /* XXX */
+        r->request_body->filter_need_buffering = 1;
+#endif
     }
 
-    return ngx_http_next_request_body_filter(r, in);
+    if (ngx_chain_add_copy(r->pool, &ctx->out, in) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    if (!ctx->event.timedout) {
+        if (!ctx->event.timer_set) {
+
+            /* cleanup to remove the timer in case of abnormal termination */
+
+            cln = ngx_http_cleanup_add(r, 0);
+            if (cln == NULL) {
+                return NGX_ERROR;
+            }
+
+            cln->handler = ngx_http_delay_body_cleanup;
+            cln->data = ctx;
+
+            /* add timer */
+
+            ctx->event.handler = ngx_http_delay_body_event_handler;
+            ctx->event.data = r;
+            ctx->event.log = r->connection->log;
+
+            ngx_add_timer(&ctx->event, conf->delay);
+
+            ctx->buffered = 1;
+#if 1 /* XXX */
+            r->request_body->buffered++;
+#endif
+        }
+
+        return ngx_http_next_request_body_filter(r, NULL);
+    }
+
+    if (ctx->buffered) {
+        ctx->buffered = 0;
+#if 1 /* XXX */
+        r->request_body->buffered--;
+#endif
+    }
+
+    rc = ngx_http_next_request_body_filter(r, ctx->out);
+
+    for (cl = ctx->out; cl; /* void */) {
+        ln = cl;
+        cl = cl->next;
+        ngx_free_chain(r->pool, ln);
+    }
+
+    ctx->out = NULL;
+
+    return rc;
+}
+
+
+static void
+ngx_http_delay_body_cleanup(void *data)
+{
+    ngx_http_delay_body_ctx_t *ctx = data;
+
+    if (ctx->event.timer_set) {
+        ngx_del_timer(&ctx->event);
+    }
+}
+
+
+static void
+ngx_http_delay_body_event_handler(ngx_event_t *ev)
+{
+    ngx_connection_t    *c;
+    ngx_http_request_t  *r;
+
+    r = ev->data;
+    c = r->connection;
+
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                   "delay request body event");
+
+    ngx_post_event(c->read, &ngx_posted_events);
 }
 
 

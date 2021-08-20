@@ -35,11 +35,19 @@ http {
     server {
         listen       127.0.0.1:8080;
         server_name  localhost;
+
         location / {
             delay_body 1s;
             add_header X-Time $request_time;
             proxy_pass http://127.0.0.1:8080/empty;
         }
+
+        location /no {
+            delay_body 0s;
+            add_header X-Time $request_time;
+            proxy_pass http://127.0.0.1:8080/empty;
+        }
+
         location /empty {
             return 200 "test response body\n";
         }
@@ -53,7 +61,7 @@ $t->try_run('no delay_body')->plan(4);
 ###############################################################################
 
 like(get_body('/', '123456'), qr/200 OK.*X-Time: 1/ms, 'delay');
-like(get_body('/empty', '123456'), qr/200 OK.*X-Time: 0/ms, 'no delay');
+like(get_body('/no', '123456'), qr/200 OK.*X-Time: 0/ms, 'no delay');
 
 # pipelining
 

@@ -16,7 +16,6 @@ typedef struct {
 typedef struct {
     ngx_event_t   event;
     ngx_chain_t  *out;
-    ngx_uint_t    buffered;
 } ngx_http_delay_body_ctx_t;
 
 
@@ -105,9 +104,7 @@ ngx_http_delay_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
         ngx_http_set_ctx(r, ctx, ngx_http_delay_body_filter_module);
 
-#if 1 /* XXX */
         r->request_body->filter_need_buffering = 1;
-#endif
     }
 
     if (ngx_chain_add_copy(r->pool, &ctx->out, in) != NGX_OK) {
@@ -134,21 +131,9 @@ ngx_http_delay_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
             ctx->event.log = r->connection->log;
 
             ngx_add_timer(&ctx->event, conf->delay);
-
-            ctx->buffered = 1;
-#if 1 /* XXX */
-            r->request_body->buffered++;
-#endif
         }
 
         return ngx_http_next_request_body_filter(r, NULL);
-    }
-
-    if (ctx->buffered) {
-        ctx->buffered = 0;
-#if 1 /* XXX */
-        r->request_body->buffered--;
-#endif
     }
 
     rc = ngx_http_next_request_body_filter(r, ctx->out);

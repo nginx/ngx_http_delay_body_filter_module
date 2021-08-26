@@ -99,7 +99,7 @@ ngx_http_delay_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     if (ctx == NULL) {
         ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_delay_body_ctx_t));
         if (ctx == NULL) {
-            return NGX_ERROR;
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
 
         ngx_http_set_ctx(r, ctx, ngx_http_delay_body_filter_module);
@@ -108,7 +108,7 @@ ngx_http_delay_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     }
 
     if (ngx_chain_add_copy(r->pool, &ctx->out, in) != NGX_OK) {
-        return NGX_ERROR;
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
     if (!ctx->event.timedout) {
@@ -118,7 +118,7 @@ ngx_http_delay_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
             cln = ngx_http_cleanup_add(r, 0);
             if (cln == NULL) {
-                return NGX_ERROR;
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
             }
 
             cln->handler = ngx_http_delay_body_cleanup;
